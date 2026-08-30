@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Differentiation Explorer</title>
+    <!-- Core Libraries -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 10px; background: #f0f2f5; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        .container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 98%; max-width: 1200px; margin: auto; height: 95vh; display: flex; flex-direction: column; box-sizing: border-box; }
+        
+        .controls-grid { 
+            display: grid; 
+            grid-template-columns: 1.5fr 1fr 1fr 1fr; 
+            gap: 15px; 
+            background: #f8fafc; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border: 1px solid #e2e8f0;
+            margin-bottom: 10px;
+        }
+        .control-group { display: flex; flex-direction: column; gap: 4px; }
+        label { font-weight: 600; font-size: 0.7rem; color: #64748b; text-transform: uppercase; }
+        input[type="text"] { padding: 10px; border: 2px solid #3b82f6; border-radius: 6px; font-size: 1rem; width: 100%; box-sizing: border-box; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        
+        .plot-container { flex: 1; width: 100%; position: relative; border: 1px solid #e2e8f0; overflow: hidden; }
+        #plot-area { width: 100%; height: 100%; cursor: grab; }
+        
+        #math-label {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #cbd5e1;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            font-size: 1.2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 10;
+            display: none;
+        }
+
+        .stats-bar { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            background: #0f172a; 
+            color: white; 
+            padding: 15px; 
+            border-radius: 8px; 
+            font-family: monospace;
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+        button { padding: 8px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; font-size: 0.75rem; color: white; }
+        .btn-focus { background: #3b82f6; }
+        .btn-reset { background: #64748b; }
+        .toggle-label { font-size: 0.75rem; text-transform: none; display: flex; align-items: center; gap: 5px; cursor: pointer; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="controls-grid">
+        <div class="control-group">
+            <label>Function f(x)</label>
+            <input type="text" id="equation" value="x^2" spellcheck="false">
+        </div>
+        <div class="control-group">
+            <label>Point A (x) = <span id="x-disp">2.9</span></label>
+            <input type="range" id="x-slider" min="-50" max="50" step="0.1" value="2.9">
+        </div>
+        <div class="control-group">
+            <label>Distance Δx = <span id="h-disp">7.701</span></label>
+            <input type="range" id="h-slider" min="0.001" max="15" step="0.01" value="7.7">
+        </div>
+        <div class="control-group">
+            <label>Options</label>
+            <div style="display:flex; gap:5px;">
+                <button class="btn-focus" id="focus">Focus</button>
+                <button class="btn-reset" id="reset">Reset</button>
+            </div>
+            <label class="toggle-label">
+                <input type="checkbox" id="show-triangle" checked> Show Rise/Run
+            </label>
+        </div>
+    </div>
+
+    <div class="plot-container">
+        <div id="plot-area"></div>
+        <div id="math-label"></div>
+    </div>
+
+    <div class="stats-bar">
+        <div>Secant Slope: <span id="s-val" style="color:#fb923c">--</span></div>
+        <div>Tangent Slope: <span id="t-val" style="color:#38bdf8">--</span></div>
+    </div>
+</div>
+
+<script>
+    const plot = document.getElementById('plot-area');
+    const mathLabel = document.getElementById('math-label');
+    const triangleToggle = document.getElementById('show-triangle');
+    
+    let xRange = [-10, 10];
+    let yRange = [-10, 10];
+    let isInitialized = false;
+
+    function render(mode = "keep") {
+        const eqStr = document.getElementById('equation').value;
+        const xA = parseFloat(document.getElementById('x-slider').value);
+        const h = parseFloat(document.getElementById('h-slider').value);
+        const xB = xA + h;
+
+        document.getElementById('x-disp').innerText = xA.toFixed(1);
+        document.getElementById('h-disp').innerText = h.toFixed(3);
+
+        try {
+            const node = math.parse(eqStr);
+            const f = node.compile();
+            const df = math.derivative(eqStr, 'x').compile();
+
+            const yA = f.evaluate({x: xA});
+            const yB = f.evaluate({x: xB});
+            const slopeT = df.evaluate({x: xA});
+            const slopeS = (yB - yA) / h;
+
+            document.getElementById('s-val').innerText = slopeS.toFixed(3);
+            document.getElementById('t-val').innerText = slopeT.toFixed(3);
+
+            if (mode === "reset") {
+                xRange = [-10, 10]; yRange = [-10, 10];
+            } else if (mode === "focus") {
+                const xMargin = Math.max(Math.abs(h), 10);
+                xRange = [Math.min(xA, xB) - xMargin, Math.max(xA, xB) + xMargin];
+                const yMargin = Math.abs(yB - yA) + 20;
+                yRange = [Math.min(yA, yB) - yMargin, Math.max(yA, yB) + yMargin];
+            } else if (isInitialized && plot.layout && plot.layout.xaxis) {
+                xRange = plot.layout.xaxis.range;
+                yRange = plot.layout.yaxis.range;
+            }
+
+            const xs = [], ys = [];
+            const span = xRange[1] - xRange[0];
+            const step = span / 300;
+            for (let x = xRange[0] - span; x <= xRange[1] + span; x += step) {
+                xs.push(x);
+                try { ys.push(f.evaluate({x})); } catch(e) { ys.push(null); }
+            }
+
+            const lineX = [xRange[0] - 5000, xRange[1] + 5000];
+            const data = [
+                { x: xs, y: ys, name: 'f(x)', line: {color: '#1e293b', width: 3}, hoverinfo: 'none' },
+                { x: lineX, y: lineX.map(x => slopeS * (x - xA) + yA), name: 'Secant', line: {color: '#fb923c', dash: 'dash'}, hoverinfo: 'none' },
+                { x: lineX, y: lineX.map(x => slopeT * (x - xA) + yA), name: 'Tangent', line: {color: '#38bdf8', width: 2}, hoverinfo: 'none' }
+            ];
+
+            if (triangleToggle.checked) {
+                // Triangle lines
+                data.push({
+                    x: [xA, xB, xB],
+                    y: [yA, yA, yB],
+                    mode: 'lines',
+                    line: { color: '#fb923c', dash: 'dot', width: 2 },
+                    name: 'Rise/Run',
+                    showlegend: false,
+                    hoverinfo: 'none'
+                });
+
+                // Rise/Run Value Labels
+                data.push({
+                    x: [(xA + xB) / 2, xB + (span * 0.02)],
+                    y: [yA - (yRange[1]-yRange[0])*0.02, (yA + yB) / 2],
+                    mode: 'text',
+                    text: [`Δx = ${h.toFixed(3)}`, `Δy = ${(yB - yA).toFixed(3)}`],
+                    textposition: ['bottom center', 'middle right'],
+                    textfont: { color: '#fb923c', size: 12, weight: 'bold' },
+                    showlegend: false,
+                    hoverinfo: 'none'
+                });
+            }
+
+            data.push({ 
+                x: [xA, xB], y: [yA, yB], 
+                mode: 'markers+text', 
+                text: ['A', 'B'], 
+                textposition: 'top center',
+                textfont: { weight: 'bold', size: 14 },
+                marker: {color: ['#1e293b', '#fb923c'], size: 12}, 
+                showlegend: false 
+            });
+
+            const layout = {
+                xaxis: { range: xRange, zeroline: true, gridcolor: '#f1f5f9' },
+                yaxis: { range: yRange, zeroline: true, gridcolor: '#f1f5f9' },
+                dragmode: 'pan', margin: { t: 10, b: 20, l: 40, r: 10 },
+                legend: { orientation: 'h', y: 1.1, x: 0.5, xanchor: 'center' },
+                showlegend: true
+            };
+
+            const config = { responsive: true, scrollZoom: true, displayModeBar: false };
+
+            if (!isInitialized) {
+                Plotly.newPlot(plot, data, layout, config);
+                isInitialized = true;
+                plot.on('plotly_relayout', () => render("keep"));
+            } else {
+                Plotly.react(plot, data, layout);
+            }
+
+            const xaxis = plot._fullLayout.xaxis;
+            const yaxis = plot._fullLayout.yaxis;
+            
+            if (xA >= xRange[0] && xA <= xRange[1]) {
+                const screenX = xaxis.l2p(xA) + plot._fullLayout.margin.l;
+                const screenY = yaxis.l2p(yA) + plot._fullLayout.margin.t;
+                
+                mathLabel.style.display = "block";
+                mathLabel.style.left = (screenX + 15) + "px";
+                mathLabel.style.top = (screenY - 55) + "px";
+                mathLabel.innerHTML = `y = ${eqStr.replace(/\*/g, '').replace(/\^/g, '<sup>')}${eqStr.includes('^') ? '</sup>' : ''}`;
+            } else {
+                mathLabel.style.display = "none";
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    ['equation', 'x-slider', 'h-slider'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => render("keep"));
+    });
+    triangleToggle.addEventListener('change', () => render("keep"));
+    document.getElementById('focus').onclick = () => render("focus");
+    document.getElementById('reset').onclick = () => render("reset");
+
+    render("reset");
+</script>
+</body>
+</html>
